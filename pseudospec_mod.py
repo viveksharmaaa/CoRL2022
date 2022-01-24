@@ -1,45 +1,33 @@
-#https://wang-yimu.com/sum-of-squares-programming/
-#https://medium.com/@benjamin.phillips22/simple-regression-with-neural-networks-in-pytorch-313f06910379
-
 import numpy as np
+import time
 
-WC = np.array([[2.285714286, 0.1428571429, -0.4285714286],
-              [0.1428571429, 1.571428571, 0.2857142857],
-              [-0.4285714286, 0.2857142857, 1.142857143]])
+# WC = np.array([[2.285714286, 0.1428571429, -0.4285714286],
+#               [0.1428571429, 1.571428571, 0.2857142857],
+#               [-0.4285714286, 0.2857142857, 1.142857143]])
+#
+#
+# WL = np.array([[0, -4.57142857142857, 0 ],
+#               [-4.57142857142857, -0.571549759244019, 0.857142857142854],
+#              [0, 0.857142857142854, 0]])
+#
+# WQ = np.array([[0, 0, 0 ],
+#              [0, 9.14297833067258, 0],
+#              [0, 0, 0]])
 
 
-WL = np.array([[0, -4.57142857142857, 0 ],
-              [-4.57142857142857, -0.571549759244019, 0.857142857142854],
-             [0, 0.857142857142854, 0]])
-
-WQ = np.array([[0, 0, 0 ],
-             [0, 9.14297833067258, 0],
-             [0, 0, 0]])
+# W = np.array([[4.25828, -0.93423], [-0.93423, 3.76692]]) #for 2x2 example from Arun's paper
 
 
 
-#WC = np.array([[0.20365, 0.00015,  -0.00566],
-#           [0.00015,   0.21671,  -0.00566],
-#           [-0.00566,  -0.00566,   0.21607]])
-#Wl = np.array([[0.0,      -0.4073,   -0.00133],
- #          [-0.4073,   -0.00061,   0.00998],
- #          [-0.00133,   0.00998,   0.06785]])
-#Wq = np.array([[0.0,      0.0,      0.00053],
- #           [0.0,      0.81459,  0.00308],
- #           [0.00053,  0.00308,  0.00343]])
-
-config = {
-  "N": 20,
-  "deg": 7,
-  "alpha0" : 1,
-    "c": 0.1,
-"tau" : 0.1,
-"sparse_eps" : 1E-20,
-"rel_tol" : 1E-7,
-    "W": [WC,WL,WQ],
-"repetition" : 100,
-  "dim": 3,
-    "type":"chebyshev"}
+WC = np.array([[0.20365, 0.00015,  -0.00566],
+           [0.00015,   0.21671,  -0.00566],
+           [-0.00566,  -0.00566,   0.21607]])
+WL = np.array([[0.0,      -0.4073,   -0.00133],
+           [-0.4073,   -0.00061,   0.00998],
+           [-0.00133,   0.00998,   0.06785]])
+WQ = np.array([[0.0,      0.0,      0.00053],
+            [0.0,      0.81459,  0.00308],
+            [0.00053,  0.00308,  0.00343]])
 
 def _chebpts(config):
     K = config["N"]
@@ -59,10 +47,40 @@ def _chebpts(config):
 
     return n.reshape(n.shape[0],1), w.reshape(w.shape[0],1)
 
+def _chebpoly(config, s, ps):
+    # D : Max degree
+    N = np.size(ps["nodes"])
+    T = np.zeros((config["deg"]+1,config["N"]+1))
+    for i in range(config["deg"]+1):
+        for j in range(N):
+            if i == 0:
+                T[i, j] = 1
+            elif i == 1:
+                T[i, j] = ps["nodes"][j]
+            else:
+                T[i, j] = 2 * ps["nodes"][j] * T[i - 1, j] - T[i - 2, j]
+    return T[:,np.where(ps["nodes"].squeeze(-1) == s)[0][0]].reshape(T.shape[0],1)
+
+def _chebpolyder(config, s, ps, T):
+    # D : Max degree
+
+    N = np.size(ps["nodes"])
+    dT = np.zeros((config["deg"]+1,config["N"]+1))
+
+    for i in range(config["deg"]+1):
+        for j in range(N):
+            if i == 0:
+                dT[i, j] = 0
+            elif i == 1:
+                dT[i, j] = 1
+            else:
+                dT[i, j] = 2*T[i-1, j] + 2*ps["nodes"][j]*dT[i-1, j] - dT[i-2, j]
+    return dT[1:,np.where(ps["nodes"].squeeze(-1) == s)[0][0]].reshape(dT.shape[0]-1,1)
+
 def ps_params(config):
-    nodes = CGLnodes(config)
-    weights = ClenshawCurtisWeight(config)
-    #nodes, weights = _chebpts(config)
+    #nodes = CGLnodes(config)
+    #weights = ClenshawCurtisWeight(config)
+    nodes, weights = _chebpts(config)
     return {"nodes" : nodes,"weights" : weights}
 
 
@@ -107,18 +125,24 @@ def ChebyshevSecondKind(config, s, k = 0):
             U1 = U2
     return np.transpose(U.reshape(1,deg+1))
 
-def DiffChebyshevPolynomial(config, s):
-        bot = np.vstack((0,ChebyshevSecondKind(config, s, 1)))
+def DiffChebyshevPolynomial(config, s, ps, L):
+        bot = np.vstack((0,_chebpolyder(config, s, ps,  L)))
         return sparsify(2*np.linspace(0,config["deg"],config["deg"]+1).reshape(config["deg"]+1,1) * bot,config["sparse_eps"])
 
 def Constraints(config,ps,xstar, xcurr):
     Z = np.zeros(config["deg"]+1).reshape(1,config["deg"]+1)
     start = 0
     finish = 0
-    start = np.transpose(ChebyshevPolynomial(config, 0))
-    finish = np.transpose(ChebyshevPolynomial(config, 1))
+    start = np.transpose(_chebpoly(config, 0, ps))
+    finish = np.transpose(_chebpoly(config, 1, ps))
 
-    A= np.zeros((6,3*(config["deg"]+1)))
+    A= np.zeros((2*config["dim"],config["dim"]*(config["deg"]+1)))
+
+    # A[0, :] = np.concatenate((start, Z), axis=1)
+    # A[1, :] = np.concatenate((Z, start), axis=1)
+    # A[2, :] = np.concatenate((finish, Z), axis=1)
+    # A[3, :] = np.concatenate((Z, finish), axis=1)
+
     A[0,:] = np.concatenate((start,Z,Z),axis=1)
     A[1,:] = np.concatenate((Z,start,Z),axis=1)
     A[2,:] = np.concatenate((Z,Z,start),axis=1)
@@ -154,7 +178,7 @@ def computeEnergy(config,ps,C,L,dL):
     dX = np.matmul(C_reshape,dL)
     E = 0.0
     for i in range(config["N"]+1):
-        E = E + np.matmul(dX[:,i].reshape(1,dX.shape[0]),np.matmul(np.linalg.inv(evalMetric(config, X[0,i])),dX[:,i].reshape(dX.shape[0],1)) * ps["weights"][i])
+        E = E + np.matmul(dX[:,i].reshape(1,dX.shape[0]),np.matmul(np.linalg.inv(evalMetric(config, X[0,i])),dX[:,i].reshape(dX.shape[0],1)) * ps["weights"][i]) #INVERSE
     return E
 
 def computeJacobian(config,ps,C,L,dL):
@@ -169,8 +193,8 @@ def computeJacobian(config,ps,C,L,dL):
     for j in range(N+1):
         me = X[0,j]  # [;,j] for W from CCM ) (size: a scalar)
         Wx = evalMetric (config, me)  # change the function size : (dim,dim)
-        M = np.linalg.inv(Wx)
-        dW = config["W"][1]+ 2*config["W"][2]*me  #dW is DW/dxi
+        M = np.linalg.inv(Wx) #INVERSE
+        dW = config["W"][1]+ 2*config["W"][2]*me  #dW is DW/dxi np.zeros((config["dim"],config["dim"])).reshape(config["dim"],config["dim"])
         Mdot = -1 * np.matmul(np.matmul(M,dW),M)
         d = dX[:,j].reshape(dX.shape[0],1)
         dsj = ps["weights"][j]
@@ -187,13 +211,13 @@ def pseudospectral_geodesic(config,xstar,xcurr):
     ps = ps_params(config)
     C = np.zeros(config["dim"] * (config["deg"] + 1)).reshape(config["dim"] * (config["deg"] + 1),1)
     E0 = 0
-    #tic()
+    t = time.time()
     L = 0
     dL = 0
     for rep in range(config["repetition"]):
         C = np.zeros(config["dim"] * (config["deg"] + 1)).reshape((config["dim"] * (config["deg"] + 1)),1)
-        dL = np.hstack([DiffChebyshevPolynomial(config, ni) for ni in ps["nodes"]])
-        L = np.hstack([ChebyshevPolynomial(config, ni) for ni in ps["nodes"]])
+        L = np.hstack([_chebpoly(config, ni, ps) for ni in ps["nodes"]])
+        dL = np.hstack([DiffChebyshevPolynomial(config, ni, ps, L) for ni in ps["nodes"]])
         for q in range(config["dim"]):
             C[(config["deg"] + 1) * (q - 1) + 1 - 1] = 0.5 * (xstar[q] + xcurr[q])
             C[(config["deg"] + 1) * (q - 1) + 2 - 1] = 0.5 * (xcurr[q] - xstar[q])
@@ -201,7 +225,7 @@ def pseudospectral_geodesic(config,xstar,xcurr):
         E0 = computeEnergy(config, ps, C, L, dL)
         H = np.eye((config["dim"] * (config["deg"] + 1)))
         H_default = H
-        g = computeJacobian(config, ps, C, L, dL)  #shape (dim *(deg+1), N+1)
+        g = computeJacobian(config, ps, C, L, dL)  #shape (dim *(deg+1),1)
         step_dir = 1
         alpha = 1
         while np.linalg.norm(step_dir * alpha) > config["rel_tol"]:
@@ -216,6 +240,7 @@ def pseudospectral_geodesic(config,xstar,xcurr):
             EE = 0
             while True:
                 EE = computeEnergy(config, ps, C+alpha*step_dir, L, dL)
+                print(EE)
                 if E0 - EE >= (alpha*t)[0]:
                     break
                 alpha = config["tau"] * alpha
@@ -226,11 +251,25 @@ def pseudospectral_geodesic(config,xstar,xcurr):
             g = computeJacobian(config, ps, C, L, dL)
             gamma = (g - g0)  # column
             H = H - (np.matmul(np.matmul(H,np.matmul(s,np.transpose(s))),H)/(np.matmul(np.transpose(s),np.matmul(H,s)))) + (np.multiply(gamma,np.transpose(gamma)) / np.matmul(np.transpose(gamma),s))
-    return {"E0" : E0,"ps" : ps}
+    comp_time = (time.time() - t) / config["repetition"]
+    return {"E0" : E0,"ps" : ps, "comp_time" : comp_time}
 
+config = {
+  "N": 7,
+  "deg": 4,
+  "alpha0" : 1,
+    "c": 0.1,
+"tau" : 0.1,
+"sparse_eps" : 1E-20,
+"rel_tol" : 1E-7,
+    "W": [WC,WL,WQ],
+"repetition" : 100,
+  "dim": 3,
+    "type":"chebyshev"}
 
-xstar = 0 * np.array([[1],[1],[1]])
-xcurr = 5 * np.array([[1],[1],[1]])
+xstar = 0. * np.array([[1.],[1.],[1.]])
+xcurr = 0.1 * np.array([[1.],[-1.],[1.]])
+
 ps_result = pseudospectral_geodesic(config, xstar, xcurr)
 print(ps_result["E0"])
 

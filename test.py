@@ -144,28 +144,28 @@ def _chebpts(N):
     return n, w
 
 
-def _chebpoly(nodes, D):
+def _chebpoly(config, s, ps):
     # D : Max degree
-    N = np.size(nodes)
-    T = np.zeros((D,N))
-    for i in range(D):
+    N = np.size(ps["nodes"])
+    T = np.zeros((config["deg"]+1,config["N"]+1))
+    for i in range(config["deg"]+1):
         for j in range(N):
             if i == 0:
                 T[i, j] = 1
             elif i == 1:
-                T[i, j] = nodes[j]
+                T[i, j] = ps["nodes"][j]
             else:
-                T[i, j] = 2 * nodes[j] * T[i - 1, j] - T[i - 2, j]
-    return T
+                T[i, j] = 2 * ps["nodes"][j] * T[i - 1, j] - T[i - 2, j]
+    return T[:,np.where(ps["nodes"].squeeze(-1) == s)[0][0]].reshape(T.shape[0],1)
 
 
 def _chebpolyder(T, nodes, D):
     # D : Max degree
 
     N = np.size(nodes)
-    dT = np.zeros((D,N))
+    dT = np.zeros((D+1,N))
 
-    for i in range(D):
+    for i in range(D+1):
         for j in range(N):
             if i == 0:
                 dT[i, j] = 0

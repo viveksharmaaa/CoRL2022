@@ -51,7 +51,7 @@ def sample_full():
     x = sample_x(xref)
     return (x, xref, uref)
 
-num_train =10
+num_train =1
 num_test = 5
 X_tr = [sample_full() for _ in range(num_train)]
 X_te = [sample_full() for _ in range(num_test)]
@@ -124,7 +124,7 @@ def Jacobian_Matrix(M, x):
 
 Jacobian_Matrix(W, x)  #Batch size x n x n x n
 
-
+matrix = W.detach().numpy().reshape(W.shape[1],W.shape[2])
 
 
 
