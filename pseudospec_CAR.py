@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import torch
+import time
 from torch.autograd import grad
 
 def data_sets(num_train,num_test,num_dim_x,num_dim_control):
@@ -54,6 +55,25 @@ def data_sets(num_train,num_test,num_dim_x,num_dim_control):
 
     return x, xref, uref
 
+def ClenshawCurtisWeight(config):
+    N = config["N"]
+    w = np.zeros(N+1).reshape(N+1,1)
+    if N%2 == 0:
+        w[0] = 1/(N**2 - 1)
+        w[-1] = w[0]
+        for s in range(np.floor(N/2).astype(int)):
+            wi = 0
+            for j in range(np.floor(N/2).astype(int)+1):
+                if j == 0:
+                    wi = wi + 0.5/(1-4*(j**2)) * np.cos(2*np.pi*j*(s+1)/N)
+                elif j == N/2:
+                    wi = wi + 0.5/(1-4*(j**2)) * np.cos(2*np.pi*j*(s+1)/N)
+                else:
+                    wi = wi + 1/(1-4*(j**2)) * np.cos(2*np.pi*j*(s+1)/N)
+            w[s+1] = 4/N*wi
+            w[N-s-1] = w[s+1]
+    return w/2
+
 def _chebpts(config):
     K = config["N"]
     n = 0.5 * (np.cos(np.pi * np.arange(K, -1, -1) / K) + 1)
@@ -71,6 +91,9 @@ def _chebpts(config):
         w[K - k] = w[k] = wk
 
     return n.reshape(n.shape[0],1), w.reshape(w.shape[0],1)
+
+def CGLnodes(config): #N is number of nodes
+    return np.array([0.5 - 0.5*np.cos(k*np.pi/config["N"]) for k in range(config["N"]+1)]).reshape(config["N"]+1,1)   #columnvector
 
 def _chebpoly(config, s, ps):
     # D : Max degree
@@ -103,6 +126,8 @@ def _chebpolyder(config, s, ps, T):
     return dT[1:,np.where(ps["nodes"].squeeze(-1) == s)[0][0]].reshape(dT.shape[0]-1,1)
 
 def ps_params(config):
+    #nodes = CGLnodes(config)
+    #weights = ClenshawCurtisWeight(config)
     nodes, weights = _chebpts(config)
     return {"nodes" : nodes,"weights" : weights}
 
@@ -121,8 +146,8 @@ def ChebyshevPolynomial(config, s):  #https://people.sc.fsu.edu/~jburkardt/py_sr
     return np.transpose(T.reshape(1,config["deg"]+1))   #nodes go across, basis goes down
 
 
-def evalMetric (config, x):
-    return config["W"][0] + config["W"][1]*x + config["W"][2]*x*x
+# def evalMetric (config, x):
+#     return config["W"][0] + config["W"][1]*x + config["W"][2]*x*x
 
 def W_func(x,w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x, num_dim_control):
 
@@ -226,25 +251,33 @@ def DiffChebyshevPolynomial(config, s, ps, L):
         return sparsify(2*np.linspace(0,config["deg"],config["deg"]+1).reshape(config["deg"]+1,1) * bot,config["sparse_eps"])
 
 def Constraints(config,ps,xstar, xcurr):
-    Z = np.zeros(config["deg"]+1).reshape(1,config["deg"]+1)
+    #Z = np.zeros(config["deg"]+1).reshape(1,config["deg"]+1)
     start = 0
     finish = 0
     start = np.transpose(_chebpoly(config, 0, ps))
     finish = np.transpose(_chebpoly(config, 1, ps))
 
-    A= np.zeros((2*config["dim"],config["dim"]*(config["deg"]+1)))
+    #A= np.zeros((2*config["dim"],config["dim"]*(config["deg"]+1)))
+    ####modified####
+    Am = np.zeros((2 * config["dim"], config["dim"] * (config["deg"] + 1)))
+    Am[0, 0:config["deg"]+1] = start
+    Am[config["deg"],0:config["deg"]+1] = finish
 
-    A[0,:] = np.concatenate((start,Z,Z,Z),axis=1)
-    A[1,:] = np.concatenate((Z,start,Z,Z),axis=1)
-    A[2,:] = np.concatenate((Z,Z,start,Z),axis=1)
-    A[3,:] = np.concatenate((Z,Z,Z,start),axis=1)
-    A[4,:] = np.concatenate((finish,Z,Z,Z),axis=1)
-    A[5,:] = np.concatenate((Z,finish,Z,Z),axis=1)
-    A[6,:] = np.concatenate((Z,Z,finish,Z),axis=1)
-    A[7,:] = np.concatenate((Z,Z,Z,finish),axis=1)
+    for i in range(1,config["dim"]): #modified
+        Am[i,i*(config["deg"]+1) : (i+1)*(config["deg"]+1)] = start
+        Am[config["dim"]+i,i*(config["deg"]+1) : (i+1)*(config["deg"]+1)] = finish
+
+    # A[0,:] = np.concatenate((start,Z,Z,Z),axis=1)
+    # A[1,:] = np.concatenate((Z,start,Z,Z),axis=1)
+    # A[2,:] = np.concatenate((Z,Z,start,Z),axis=1)
+    # A[3,:] = np.concatenate((Z,Z,Z,start),axis=1)
+    # A[4,:] = np.concatenate((finish,Z,Z,Z),axis=1)
+    # A[5,:] = np.concatenate((Z,finish,Z,Z),axis=1)
+    # A[6,:] = np.concatenate((Z,Z,finish,Z),axis=1)
+    # A[7,:] = np.concatenate((Z,Z,Z,finish),axis=1)
 
     b= np.concatenate((xstar,xcurr),axis=0)
-    return A, b
+    return Am, b
 
 def computeEnergy(config,ps,C, L, dL):
     C_shape = np.reshape(C, (config["dim"], config["deg"] + 1))
@@ -264,26 +297,27 @@ def computeJacobian(config,ps,C,L,dL):
     X = np.matmul(C_reshape,L)
     dX = np.matmul(C_reshape,dL)
     W_Jw = W_JW(config, ps, X)
-    gx = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
-    gy = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
-    gz = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
-    g4 = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1) #added for CAR
+    # gx = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
+    # gy = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
+    # gz = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1)
+    # g4 = np.zeros((deg + 1, N + 1)).reshape(deg+1, N+1) #added for CAR
+    gradient = np.zeros((config["dim"],deg + 1, N + 1)).reshape(config["dim"],deg+1, N+1)
     for j in range(N+1):
-        #me = X[0,j]  # [;,j] for W from CCM ) (size: a scalar)
         Wx = W_Jw["W"][j]  # change the function size : (dim,dim)
         M = np.linalg.inv(Wx) #INVERSE
-        #dW = W_Jw["DWdx"][j][:][:][0] + W_Jw["DWdx"][j][:][:][1] + W_Jw["DWdx"][j][:][:][2] + W_Jw["DWdx"][j][:][:][3] #config["W"][1]+ 2*config["W"][2]*me  #dW is DW/dxi np.zeros((config["dim"],config["dim"])).reshape(config["dim"],config["dim"])
-        #Mdot = -1 * np.matmul(np.matmul(M,dW),M)
         d = dX[:,j].reshape(dX.shape[0],1)
         dsj = ps["weights"][j]
         dLds = dL[:,j]*dsj
         Lds = L[:,j]* dsj
         Md = 2 * np.matmul(M,d)
-        gx[:,j] = Md[0]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][0] ),M)),d)[0] * Lds #stacked in 'i' column of gx
-        gy[:,j] = Md[1]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][1] ),M)),d)[0] * Lds
-        gz[:,j] = Md[2]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][2] ),M)),d)[0] * Lds
-        g4[:,j] = Md[3]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][3] ),M)),d)[0] * Lds
-    g =np.concatenate((gx,gy,gz,g4),axis=0)
+        # gx[:,j] = Md[0]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][0] ),M)),d)[0] * Lds #stacked in 'i' column of gx
+        # gy[:,j] = Md[1]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][1] ),M)),d)[0] * Lds
+        # gz[:,j] = Md[2]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][2] ),M)),d)[0] * Lds
+        # g4[:,j] = Md[3]*dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][3] ),M)),d)[0] * Lds
+        for i in range(config["dim"]):
+            gradient[i, :, j] = Md[i] * dLds + np.matmul(np.matmul(np.transpose(d), -1 * np.matmul(np.matmul(M, W_Jw["DWdx"][j][:][:][i]), M)), d)[0] * Lds
+    #g =np.concatenate((gx,gy,gz,g4),axis=0)
+    g = np.concatenate(gradient,axis = 0)
     return sparsify(g.sum(axis=1).reshape((g.shape[0],1)),config["sparse_eps"])
 
 def pseudospectral_geodesic(config,xstar,xcurr):
@@ -319,7 +353,7 @@ def pseudospectral_geodesic(config,xstar,xcurr):
             EE = 0
             while True:
                 EE = computeEnergy(config, ps, C+alpha*step_dir, L, dL)
-                print(EE)
+                #print(EE)
                 if E0 - EE >= (alpha*t)[0]:
                     break
                 alpha = config["tau"] * alpha
@@ -331,14 +365,14 @@ def pseudospectral_geodesic(config,xstar,xcurr):
             gamma = (g - g0)  # column
             H = H - (np.matmul(np.matmul(H,np.matmul(s,np.transpose(s))),H)/(np.matmul(np.transpose(s),np.matmul(H,s)))) + (np.multiply(gamma,np.transpose(gamma)) / np.matmul(np.transpose(gamma),s))
     comp_time = (time.time() - t) / config["repetition"]
-    return {"E0" : E0,"ps" : ps, "comp_time" : comp_time}
+    return {"E0" : E0,"ps" : ps, "comp_time" : comp_time, "C": C}
 
 config = {
-  "N": 7,
+  "N": 20,
   "deg": 4,
-  "alpha0" : 1,
-    "c": 0.1,
-"tau" : 0.1,
+  "alpha0" : 1,  # initial step size
+    "c": 0.1,  # termination condition for backtracking line search
+"tau" : 0.1, # rescale factor for backtracking line search
 "sparse_eps" : 1E-20,
 "rel_tol" : 1E-7,
 "repetition" : 100,
@@ -350,19 +384,26 @@ config = {
     "effective_dim_end" : 4
 }
 
-
+#Run the following lines
 num_train = 1
 num_test = 1
 x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
 
-xstar = xref.numpy().reshape(config["dim"],1)
-xcurr = x.numpy().reshape(config["dim"],1)
+xstar = xref.numpy().reshape(num_train,config["dim"],1)
+xcurr = x.numpy().reshape(num_train,config["dim"],1)
 
-ps_result = pseudospectral_geodesic(config, xstar, xcurr)
-print(ps_result["E0"])
+#ps_result = pseudospectral_geodesic(config, xstar, xcurr)
+#print(ps_result["E0"])
 
+myList = []
 
-
+start_time = time.time()
+for i in range(num_train):
+    ps_result = pseudospectral_geodesic(config, xstar[i], xcurr[i])
+    print(ps_result["E0"])
+    myList.append({"xstar": xstar[i], "x": xcurr[i], "RE": ps_result["E0"]})
+print("--- %s seconds ---" % (time.time() - start_time))
+print("Done")
 
 
 

@@ -13,48 +13,54 @@ effective_dim_end = 4
 num_dim_x = 4
 num_dim_control = 2
 
-
-np.random.seed(1024)
-
-# for ours training
-# CAR
-v_l = 1.
-v_h = 2.
-
-X_MIN = np.array([-5., -5., -np.pi, v_l]).reshape(-1,1)
-X_MAX = np.array([5., 5., np.pi, v_h]).reshape(-1,1)
-
-lim = 1.
-XE_MIN = np.array([-lim, -lim, -lim, -lim]).reshape(-1,1)
-XE_MAX = np.array([lim, lim, lim, lim]).reshape(-1,1)
-
-U_MIN = np.array([-3., -3.]).reshape(-1,1)
-U_MAX = np.array([ 3.,  3.]).reshape(-1,1)
-
-
-def sample_xef():
-    return (X_MAX-X_MIN) * np.random.rand(num_dim_x, 1) + X_MIN
-
-def sample_x(xref):
-    xe = (XE_MAX-XE_MIN) * np.random.rand(num_dim_x, 1) + XE_MIN
-    x = xref + xe
-    x[x>X_MAX] = X_MAX[x>X_MAX]
-    x[x<X_MIN] = X_MIN[x<X_MIN]
-    return x
-
-def sample_uref():
-    return (U_MAX-U_MIN) * np.random.rand(num_dim_control, 1) + U_MIN
-
-def sample_full():
-    xref = sample_xef()
-    uref = sample_uref()
-    x = sample_x(xref)
-    return (x, xref, uref)
-
 num_train =1
 num_test = 5
-X_tr = [sample_full() for _ in range(num_train)]
-X_te = [sample_full() for _ in range(num_test)]
+
+def data_sets(num_train,num_test):
+    np.random.seed(1024)
+
+    v_l = 1.
+    v_h = 2.
+    np.random.seed(1)
+
+    X_MIN = np.array([-5., -5., -np.pi, v_l]).reshape(-1, 1)
+    X_MAX = np.array([5., 5., np.pi, v_h]).reshape(-1, 1)
+
+    lim = 1.
+    XE_MIN = np.array([-lim, -lim, -lim, -lim]).reshape(-1, 1)
+    XE_MAX = np.array([lim, lim, lim, lim]).reshape(-1, 1)
+
+    U_MIN = np.array([-3., -3.]).reshape(-1, 1)
+    U_MAX = np.array([3., 3.]).reshape(-1, 1)
+
+    def sample_xef():
+        return (X_MAX - X_MIN) * np.random.rand(num_dim_x, 1) + X_MIN
+
+    def sample_x(xref):
+        xe = (XE_MAX - XE_MIN) * np.random.rand(num_dim_x, 1) + XE_MIN
+        x = xref + xe
+        x[x > X_MAX] = X_MAX[x > X_MAX]
+        x[x < X_MIN] = X_MIN[x < X_MIN]
+        return x
+
+    def sample_uref():
+        return (U_MAX - U_MIN) * np.random.rand(num_dim_control, 1) + U_MIN
+
+    def sample_full():
+        xref = sample_xef()
+        uref = sample_uref()
+        x = sample_x(xref)
+        return (x, xref, uref)
+
+    X_tr = [sample_full() for _ in range(num_train)]
+    X_te = [sample_full() for _ in range(num_test)]
+
+    return X_tr, X_te
+
+
+# CAR
+
+
 
 x= []
 xref = []
@@ -73,7 +79,7 @@ x = x.squeeze(-1)
 w_lb = 0.1
 
 
-def W_func(x,w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x, num_dim_control):
+def W_func(x,w_lb, bs = 1, effective_dim_start = 2, effective_dim_end = 4, num_dim_x = 4, num_dim_control = 2):
 
     model_Wbot = torch.nn.Sequential(
         torch.nn.Linear(1, 128, bias=True),
@@ -122,9 +128,16 @@ def Jacobian_Matrix(M, x):
             J[:, i, j, :] = grad(M[:, i, j].sum(), x, create_graph=True)[0].squeeze(-1)
     return J
 
-Jacobian_Matrix(W, x)  #Batch size x n x n x n
+
+  #Batch size x n x n x n
 
 matrix = W.detach().numpy().reshape(W.shape[1],W.shape[2])
+
+def ps_params(config):
+    #nodes = CGLnodes(config)
+    #weights = ClenshawCurtisWeight(config)
+    nodes, weights = _chebpts(config)
+    return {"nodes" : nodes,"weights" : weights}
 
 
 
