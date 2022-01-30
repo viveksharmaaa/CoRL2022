@@ -1,24 +1,8 @@
 import numpy as np
 import time
 import torch
+import time
 from torch.autograd import grad
-
-config = {
-  "N": 7,
-  "deg": 4,
-  "alpha0" : 1,  # initial step size
-    "c": 0.1,  # termination condition for backtracking line search
-"tau" : 0.1, # rescale factor for backtracking line search
-"sparse_eps" : 1E-20,
-"rel_tol" : 1E-7,
-"repetition" : 1,
-  "dim": 4,
-    "type":"chebyshev",
-    "w_lb" : 0.1,
-    "num_dim_control" : 2,
-    "effective_dim_start" : 2,
-    "effective_dim_end" : 4
-}
 
 def data_sets(num_train,num_test,num_dim_x,num_dim_control):
     np.random.seed(1024)
@@ -142,9 +126,9 @@ def _chebpolyder(config, s, ps, T):
     return dT[1:,np.where(ps["nodes"].squeeze(-1) == s)[0][0]].reshape(dT.shape[0]-1,1)
 
 def ps_params(config):
-    #nodes = CGLnodes(config)
-    #weights = ClenshawCurtisWeight(config)
-    nodes, weights = _chebpts(config)
+    nodes = CGLnodes(config)
+    weights = ClenshawCurtisWeight(config)
+    #nodes, weights = _chebpts(config)
     return {"nodes" : nodes,"weights" : weights}
 
 
@@ -262,17 +246,19 @@ def ChebyshevSecondKind(config, s, k = 0):
             U1 = U2
     return np.transpose(U.reshape(1,deg+1))
 
-def DiffChebyshevPolynomial(config, s, ps, L):
-        bot = np.vstack((0,_chebpolyder(config, s, ps,  L)))
+def DiffChebyshevPolynomial(config, s):
+        bot = np.vstack((0,ChebyshevSecondKind(config, s, 1)))
         return sparsify(2*np.linspace(0,config["deg"],config["deg"]+1).reshape(config["deg"]+1,1) * bot,config["sparse_eps"])
 
 def Constraints(config,ps,xstar, xcurr):
     #Z = np.zeros(config["deg"]+1).reshape(1,config["deg"]+1)
     start = 0
     finish = 0
-    start = np.transpose(_chebpoly(config, 0, ps))
-    finish = np.transpose(_chebpoly(config, 1, ps))
+    start = np.transpose(ChebyshevPolynomial(config, 0))
+    finish = np.transpose(ChebyshevPolynomial(config, 1))
 
+    #A = np.zeros((2 * config["dim"], config["dim"] * (config["deg"] + 1)))
+    
     Am = np.zeros((2 * config["dim"], config["dim"] * (config["deg"] + 1)))
     Am[0, 0:config["deg"]+1] = start
     Am[config["dim"],0:config["deg"]+1] = finish
@@ -281,7 +267,16 @@ def Constraints(config,ps,xstar, xcurr):
         Am[i,i*(config["deg"]+1) : (i+1)*(config["deg"]+1)] = start
         Am[config["dim"]+i,i*(config["deg"]+1) : (i+1)*(config["deg"]+1)] = finish
 
-    b= np.concatenate((xstar,xcurr),axis=0)
+    # A[0, :] = np.concatenate((start, Z, Z, Z), axis=1)
+    # A[1, :] = np.concatenate((Z, start, Z, Z), axis=1)
+    # A[2, :] = np.concatenate((Z, Z, start, Z), axis=1)
+    # A[3, :] = np.concatenate((Z, Z, Z, start),  axis=1)
+    # A[4, :] = np.concatenate((finish, Z, Z, Z), axis=1)
+    # A[5, :] = np.concatenate((Z, finish, Z, Z), axis=1)
+    # A[6, :] = np.concatenate((Z, Z, finish, Z), axis=1)
+    # A[7, :] = np.concatenate((Z, Z, Z, finish), axis=1)
+
+    b = np.concatenate((xstar, xcurr), axis=0)
     return Am, b
 
 def computeEnergy(config,ps,C, L, dL):
@@ -325,7 +320,7 @@ def computeJacobian(config,ps,C,L,dL):
     g = np.concatenate(gradient,axis = 0)
     return sparsify(g.sum(axis=1).reshape((g.shape[0],1)),config["sparse_eps"])
 
-def pseudospectral_geodesic(xstar,xcurr): #had config before
+def pseudospectral_geodesic(config,xstar,xcurr):
     ps = ps_params(config)
     C = np.zeros(config["dim"] * (config["deg"] + 1)).reshape(config["dim"] * (config["deg"] + 1),1)
     E0 = 0
@@ -334,8 +329,8 @@ def pseudospectral_geodesic(xstar,xcurr): #had config before
     dL = 0
     for rep in range(config["repetition"]):
         C = np.zeros(config["dim"] * (config["deg"] + 1)).reshape((config["dim"] * (config["deg"] + 1)),1)
-        L = np.hstack([_chebpoly(config, ni, ps) for ni in ps["nodes"]])
-        dL = np.hstack([DiffChebyshevPolynomial(config, ni, ps, L) for ni in ps["nodes"]])
+        L = np.hstack([ChebyshevPolynomial(config, ni) for ni in ps["nodes"]])
+        dL = np.hstack([DiffChebyshevPolynomial(config, ni) for ni in ps["nodes"]])
         for q in range(config["dim"]):
             C[(config["deg"] + 1) * (q - 1) + 1 - 1] = 0.5 * (xstar[q] + xcurr[q])
             C[(config["deg"] + 1) * (q - 1) + 2 - 1] = 0.5 * (xcurr[q] - xstar[q])
@@ -370,39 +365,51 @@ def pseudospectral_geodesic(xstar,xcurr): #had config before
             gamma = (g - g0)  # column
             H = H - (np.matmul(np.matmul(H,np.matmul(s,np.transpose(s))),H)/(np.matmul(np.transpose(s),np.matmul(H,s)))) + (np.multiply(gamma,np.transpose(gamma)) / np.matmul(np.transpose(gamma),s))
     comp_time = (time.time() - t) / config["repetition"]
-    #to = {"E0" : E0,"ps" : ps, "comp_time" : comp_time, "C": C}
     return {"E0" : E0,"ps" : ps, "comp_time" : comp_time, "C": C}
 
+config = {
+  "N": 30,
+  "deg": 7, #A for odd degree is weird
+  "alpha0" : 1,  # initial step size
+    "c": 0.1,  # termination condition for backtracking line search
+"tau" : 0.1, # rescale factor for backtracking line search
+"sparse_eps" : 1E-20,
+"rel_tol" : 1E-7,
+"repetition" : 1,
+  "dim": 4,
+    "type":"chebyshev",
+    "w_lb" : 0.1,
+    "num_dim_control" : 2,
+    "effective_dim_start" : 2,
+    "effective_dim_end" : 4
+}
 
-#
-# #Run the following lines
-# num_train = 12 * 1000
-# num_test = 1
-# x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
-#
-# xstar = xref.numpy().reshape(num_train,config["dim"],1)
-# xcurr = x.numpy().reshape(num_train,config["dim"],1)
-#
-#
-# myList = []
-#
-# start_time = time.time()
-# for i in range(num_train):
-#     ps_result = pseudospectral_geodesic(config, xstar[i], xcurr[i])
-#     print(ps_result["E0"])
-#     myList.append({"xstar": xstar[i], "x": xcurr[i], "RE": ps_result["E0"]})
-# print("--- %s seconds ---" % (time.time() - start_time))
-# print("Done")
-#
-#
-# #Loading data from saved file pickle.pkl
-# import pickle
-# with open('12k.pkl', 'wb') as f:
-#     pickle.dump(myList, f)
-#
-# with open('1k.pkl', 'rb') as f:
-#     data = pickle.load(f)
+#Run the following lines
+num_train = 10
+num_test = 1
+x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
+
+xstar = xref.numpy().reshape(num_train,config["dim"],1)
+xcurr = x.numpy().reshape(num_train,config["dim"],1)
+
+#ps_result = pseudospectral_geodesic(config, xstar, xcurr)
+#print(ps_result["E0"])
+
+myList = []
+
+start_time = time.time()
+for i in range(num_train):
+    ps_result = pseudospectral_geodesic(config, xstar[i], xcurr[i])
+    print(ps_result["E0"])
+    myList.append({"xstar": xstar[i], "x": xcurr[i], "RE": ps_result["E0"]})
+print("--- %s seconds ---" % (time.time() - start_time))
+print("Done")
 
 
+#Loading data from saved file pickle.pkl
+import pickle
+with open('parrot.pkl', 'wb') as f:
+    pickle.dump(myList, f)
 
-
+with open('parrot.pkl', 'rb') as f:
+    data = pickle.load(f)

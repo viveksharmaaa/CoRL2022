@@ -232,7 +232,7 @@ def pseudospectral_geodesic(config,xstar,xcurr):
             if np.linalg.det(H) < 0:
                 H = H_default
             KKT_mat = np.vstack((np.hstack((H,np.transpose(A))),np.hstack((A,np.zeros((2*config["dim"],2*config["dim"]))))))
-            KKT_sol = np.matmul(np.linalg.inv(KKT_mat),np.vstack((g,np.matmul(A,C)-b))) #sth weird
+            KKT_sol = np.matmul(np.linalg.inv(KKT_mat),np.vstack((g,np.matmul(A,C)-b)))
             step_dir = -1 * KKT_sol[0:(config["dim"] *(config["deg"]+1))]
             m = np.matmul(np.transpose(g),step_dir)
             t = - config["c"] * m
