@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 
 torch.manual_seed(0)  #for reproducibility
 
+num_dim_x = 4
+input_dim = 2 * num_dim_x
+output_dim = 1
 
 class Net(nn.Module):
    def __init__(self,input_dim, output_dim):
@@ -24,42 +27,46 @@ class Net(nn.Module):
        x = self.act2(x)
        return x
 
-with open('12k.pkl','rb') as f:
-    data = pickle.load(f)
+def Data(length):
+    with open('12k_closed.pkl', 'rb') as f:
+        full_data = pickle.load(f)
 
-Xstar = []
-Xcurr = []
-RE = []
+    Xstar = []
+    Xcurr = []
+    RE = []
 
-for j in range(int(len(data))):
-    Xstar.append(data[j]["xstar"])
-    Xcurr.append(data[j]["x"])
-    RE.append(data[j]["RE"])
+    data = full_data[0:length]
 
-Xstar = np.asarray(Xstar)
-Xcurr = np.asarray(Xcurr)
-RE = np.asarray(RE)
+    for j in range(int(len(data))):
+        Xstar.append(data[j]["xstar"])
+        Xcurr.append(data[j]["x"])
+        RE.append(data[j]["RE"])
 
-num_dim_x = 4
-input_dim = 2 * num_dim_x
-output_dim = 1
+    Xstar = np.asarray(Xstar)
+    Xcurr = np.asarray(Xcurr)
+    RE = np.asarray(RE)
 
-Xstar = Xstar.reshape(len(Xstar),num_dim_x)
-Xcurr = Xcurr.reshape(len(Xcurr),num_dim_x)
-RE = RE.reshape(len(RE),1)
 
-X = np.concatenate((Xstar,Xcurr),axis=1)
-inputs = torch.from_numpy(X).float()
-outputs = torch.from_numpy(RE).float()
+    Xstar = Xstar.reshape(len(Xstar), num_dim_x)
+    Xcurr = Xcurr.reshape(len(Xcurr), num_dim_x)
+    RE = RE.reshape(len(RE), 1)
 
-dataset = TensorDataset(inputs, outputs)
+    X = np.concatenate((Xstar, Xcurr), axis=1)
+    inputs = torch.from_numpy(X).float()
+    outputs = torch.from_numpy(RE).float()
 
-train_set, val_set = torch.utils.data.random_split(dataset, [9000, 3000])
+    dataset = TensorDataset(inputs, outputs)
 
-batch_size_train = 9000
-batch_size_test = 500
-train_loader = DataLoader(train_set, batch_size=batch_size_train, shuffle=True)
-test_loader = DataLoader(val_set, batch_size=batch_size_test, shuffle=True)
+    train_set, val_set = torch.utils.data.random_split(dataset, [int(3/4 * (len(dataset))), int(1/4 * (len(dataset)))])
+
+    batch_size_train = len(train_set)
+    batch_size_test = len(val_set)
+    train_loader = DataLoader(train_set, batch_size=batch_size_train, shuffle=True)
+    test_loader = DataLoader(val_set, batch_size=batch_size_test, shuffle=True)
+
+    return train_loader, test_loader
+
+
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -76,7 +83,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         if batch % 50 == 0:
             loss, current = loss.item(), batch * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-    return loss.item()
+    return loss #.item()
 
 def test_loop(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
@@ -102,26 +109,42 @@ print(model)
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 loss_fn = torch.nn.MSELoss()
 
-iter = 500
-train_loss = []
-test_loss = []
+iter = 100
 epochs =[]
+tr_loss = []
+val_loss = []
 
+length = [2000, 4000, 6000, 8000, 10000, 12000]
 
-for t in range(iter):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train_loss.append(train_loop(train_loader, model, loss_fn, optimizer))
-    test_loss.append(test_loop(test_loader, model, loss_fn))
+for i in range(len(length)):
+    train_loader, test_loader = Data(length[i])
+    train_loss = []
+    test_loss = []
+    for t in range(iter):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loss.append(train_loop(train_loader, model, loss_fn, optimizer))
+        test_loss.append(test_loop(test_loader, model, loss_fn))
     epochs.append(t+1)
-print("Done!")
+    tr_loss.append(train_loss[-1])
+    val_loss.append(test_loss[-1])
+    print("Done!")
 
 #epochs = np.linspace(1,100,len(train_loss)).reshape(100,1)
 
-plt.plot(epochs,train_loss)
-plt.plot(epochs,test_loss)
-plt.xlabel("# of epochs")
-plt.ylabel("Training and Testing Loss")
-plt.title("Training and testing Loss for different number of epochs")
+
+
+plt.plot(length,tr_loss)
+plt.xlabel("# of data points")
+plt.ylabel("Training Loss")
+plt.title("Training loss variation with # of data points")
+plt.savefig('train_loss_vs_data_closed.png')
+
+
+plt.plot(length,val_loss)
+plt.xlabel("# of data points")
+plt.ylabel("Validation Loss")
+plt.title("Validation loss variation with # of data points")
+plt.savefig('test_loss_vs_data_closed.png')
 
 
 ##### test points for which RE is negative
@@ -176,7 +199,7 @@ def data_sets(num_test,num_dim_x,num_dim_control):
     return x, xref
 
 
-num_test = 1000
+num_test = 12000
 num_dim_x = 4
 num_dim_control = 2
 
@@ -186,3 +209,17 @@ X_test = torch.concat((x_test.reshape(num_test,num_dim_x),xref_test.reshape(num_
 
 with torch.no_grad():
         pred = model(X_test)
+
+RE_n_pts = X_test[torch.where(pred < 0)[0],:]
+
+plt.scatter(X_test[:,0].numpy(),X_test[:,4].numpy(),marker='^',c="k")
+plt.scatter(RE_n_pts[:,0].numpy(),RE_n_pts[:,4].numpy(),marker='o',c="g")
+plt.xlabel("x")
+plt.ylabel("xstar")
+plt.title("Landscape of negative Riemmanian Energy")
+plt.legend(["All data points","Data points of negative RE"])
+
+plt.savefig('input_land_closed.png')
+
+
+

@@ -396,10 +396,10 @@ def pseudospectral_geodesic(xstar,xcurr): #had config before
 #
 #
 # #Loading data from saved file pickle.pkl
-# import pickle
-# with open('12k.pkl', 'wb') as f:
-#     pickle.dump(myList, f)
-#
+import pickle
+with open('12k_closed.pkl', 'wb') as f:
+    pickle.dump(myList, f)
+
 # with open('1k.pkl', 'rb') as f:
 #     data = pickle.load(f)
 
