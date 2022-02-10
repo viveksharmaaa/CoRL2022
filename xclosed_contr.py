@@ -1,5 +1,6 @@
 import numpy as np
 from np2pth import get_system_wrapper, get_controller_wrapper
+import pickle
 
 import importlib
 
@@ -16,12 +17,10 @@ sys.path.append('models')
 np.random.seed(0)
 
 task = 'CAR'
-nTraj = 5
-
-
+nTraj = 150
 
 system = importlib.import_module('system_'+ task)
-#geod = importlib.import_module('pseudospec_CAR')
+geod = importlib.import_module('pseudospec_CAR')
 f, B, _, num_dim_x, num_dim_control = get_system_wrapper(system)
 controller = get_controller_wrapper('log_CAR/controller_best.pth.tar')
 
@@ -58,12 +57,16 @@ if __name__ == '__main__':
     Xstar = np.tile(Xstar,(len(Xcurr),1,1))
     Xclosed = np.concatenate(Xcurr, axis=0)
 
-    # #Xstar = Xstar.reshape(Xstar.shape[0],Xstar.shape[1],1)
-    # #Xclosed = Xcurr.reshape(Xcurr.shape[1], Xcurr.shape[2],1)
-    # start_time = time.time()
-    # for i in range(len(Xstar)):
-    #     ps_result = geod.pseudospectral_geodesic(Xstar[i], Xclosed[i])
-    #     print(ps_result["E0"])
-    #     myList.append({"xstar": Xstar[i], "x": Xclosed[i], "RE": ps_result["E0"]})
-    # print("--- %s seconds ---" % (time.time() - start_time))
+    #Xstar = Xstar.reshape(Xstar.shape[0],Xstar.shape[1],1)
+    #Xclosed = Xcurr.reshape(Xcurr.shape[1], Xcurr.shape[2],1)
+
+    start_time = time.time()
+    for i in range(len(Xstar)):
+        ps_result = geod.pseudospectral_geodesic(Xstar[i], Xclosed[i])
+        print(ps_result["E0"])
+        myList.append({"xstar": Xstar[i], "x": Xclosed[i], "RE": ps_result["E0"]})
+    print("--- %s seconds ---" % (time.time() - start_time))
     print("DONE")
+
+    with open('data_closed_x0_X.pkl', 'wb') as f:
+       pickle.dump(myList, f)
