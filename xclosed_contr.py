@@ -17,12 +17,12 @@ sys.path.append('models')
 np.random.seed(0)
 
 task = 'CAR'
-nTraj = 150
+nTraj = 200  #for 40k points
 
 system = importlib.import_module('system_'+ task)
 geod = importlib.import_module('pseudospec_CAR')
 f, B, _, num_dim_x, num_dim_control = get_system_wrapper(system)
-controller = get_controller_wrapper('log_CAR/controller_best.pth.tar')
+controller = get_controller_wrapper('log_CAR_x0_from_X/controller_best.pth.tar')
 
 
 if __name__ == '__main__':
@@ -47,7 +47,7 @@ if __name__ == '__main__':
         xinit = xstar_0 + xe_0.reshape(-1, 1)
         xinits.append(xinit)
         x, u = EulerIntegrate(controller, f, B, xstar, ustar, xinit, time_bound, time_step, with_tracking=True,
-                              sigma=0.2)
+                              sigma=0.3)
         x_closed.append(x)
         controls.append(u)
 
@@ -56,7 +56,6 @@ if __name__ == '__main__':
 
     Xstar = np.tile(Xstar,(len(Xcurr),1,1))
     Xclosed = np.concatenate(Xcurr, axis=0)
-
     #Xstar = Xstar.reshape(Xstar.shape[0],Xstar.shape[1],1)
     #Xclosed = Xcurr.reshape(Xcurr.shape[1], Xcurr.shape[2],1)
 
@@ -68,5 +67,5 @@ if __name__ == '__main__':
     print("--- %s seconds ---" % (time.time() - start_time))
     print("DONE")
 
-    with open('data_closed_x0_X.pkl', 'wb') as f:
-       pickle.dump(myList, f)
+    # with open('data_CAR_closed_x0_from_X_40k_pts.pkl', 'wb') as f:
+    #    pickle.dump(myList, f)
