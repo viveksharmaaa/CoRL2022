@@ -1,7 +1,21 @@
 import numpy as np
 import time
 import torch
+import importlib
 from torch.autograd import grad
+
+import sys
+sys.path.append('systems')
+sys.path.append('configs')
+sys.path.append('models')
+
+np.random.seed(0)
+task = 'SEGWAY'
+
+model = importlib.import_module('model_'+task)
+conf = importlib.import_module('config_'+task)
+system = importlib.import_module('system_'+task)
+get_model = model.get_model
 
 config = {
   "N": 7,
@@ -12,42 +26,42 @@ config = {
 "sparse_eps" : 1E-20,
 "rel_tol" : 1E-7,
 "repetition" : 1,
-  "dim": 4,
+  "dim": system.num_dim_x,
     "type":"chebyshev",
     "w_lb" : 0.1,
-    "num_dim_control" : 2,
-    "effective_dim_start" : 2,
-    "effective_dim_end" : 4
+    "num_dim_control" : system.num_dim_control,
+    "effective_dim_start" : model.effective_dim_start,
+    "effective_dim_end" : model.effective_dim_end
 }
 
 def data_sets(num_train,num_test,num_dim_x,num_dim_control):
-    np.random.seed(1024)
-    v_l = 1.
-    v_h = 2.
-    np.random.seed(1)
+    #np.random.seed(1024)
+    # v_l = 1.
+    # v_h = 2.
+    #np.random.seed(1)
 
-    X_MIN = np.array([-5., -5., -np.pi, v_l]).reshape(-1, 1)
-    X_MAX = np.array([5., 5., np.pi, v_h]).reshape(-1, 1)
-
-    lim = 1.
-    XE_MIN = np.array([-lim, -lim, -lim, -lim]).reshape(-1, 1)
-    XE_MAX = np.array([lim, lim, lim, lim]).reshape(-1, 1)
-
-    U_MIN = np.array([-3., -3.]).reshape(-1, 1)
-    U_MAX = np.array([3., 3.]).reshape(-1, 1)
+    # X_MIN = np.array([-5., -5., -np.pi, v_l]).reshape(-1, 1)
+    # X_MAX = np.array([5., 5., np.pi, v_h]).reshape(-1, 1) conf.X_MAX
+    #
+    # lim = 1.
+    # XE_MIN = np.array([-lim, -lim, -lim, -lim]).reshape(-1, 1)
+    # XE_MAX = np.array([lim, lim, lim, lim]).reshape(-1, 1)
+    #
+    # U_MIN = np.array([-3., -3.]).reshape(-1, 1)
+    # U_MAX = np.array([3., 3.]).reshape(-1, 1)
 
     def sample_xef():
-        return (X_MAX - X_MIN) * np.random.rand(num_dim_x, 1) + X_MIN
+        return (conf.X_MAX - conf.X_MIN) * np.random.rand(num_dim_x, 1) + conf.X_MIN
 
     def sample_x(xref):
-        xe = (XE_MAX - XE_MIN) * np.random.rand(num_dim_x, 1) + XE_MIN
+        xe = (conf.XE_MAX - conf.XE_MIN) * np.random.rand(num_dim_x, 1) + conf.XE_MIN
         x = xref + xe
-        x[x > X_MAX] = X_MAX[x > X_MAX]
-        x[x < X_MIN] = X_MIN[x < X_MIN]
+        x[x > conf.X_MAX] = conf.X_MAX[x > conf.X_MAX]
+        x[x < conf.X_MIN] = conf.X_MIN[x < conf.X_MIN]
         return x
 
     def sample_uref():
-        return (U_MAX - U_MIN) * np.random.rand(num_dim_control, 1) + U_MIN
+        return (conf.UREF_MAX - conf.UREF_MIN) * np.random.rand(num_dim_control, 1) + conf.UREF_MIN
 
     def sample_full():
         xref = sample_xef()
@@ -165,21 +179,41 @@ def ChebyshevPolynomial(config, s):  #https://people.sc.fsu.edu/~jburkardt/py_sr
 # def evalMetric (config, x):
 #     return config["W"][0] + config["W"][1]*x + config["W"][2]*x*x
 
+# def W_func(x,w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x, num_dim_control):
+#     model_Wbot = torch.nn.Sequential(
+#         torch.nn.Linear(1, 128, bias=True),
+#         torch.nn.Tanh(),
+#         torch.nn.Linear(128, (num_dim_x - num_dim_control) ** 2, bias=False))
+#
+#     dim = effective_dim_end - effective_dim_start
+#     model_W = torch.nn.Sequential(
+#         torch.nn.Linear(dim, 128, bias=True),
+#         torch.nn.Tanh(),
+#         torch.nn.Linear(128, num_dim_x * num_dim_x, bias=False))
+#
+#     CCM = torch.load('log_CAR/model_best.pth.tar', map_location=torch.device('cpu'))
+#
+#     with torch.no_grad():
+#         model_W[0].weight.copy_(CCM['model_W']['0.weight'])
+#         model_W[0].bias.copy_(CCM['model_W']['0.bias'])
+#         model_W[2].weight.copy_(CCM['model_W']['2.weight'])
+#         model_Wbot[0].weight.copy_(CCM['model_Wbot']['0.weight'])
+#         model_Wbot[0].bias.copy_(CCM['model_Wbot']['0.bias'])
+#         model_Wbot[2].weight.copy_(CCM['model_Wbot']['2.weight'])
+#
+#     W = model_W(x[:, effective_dim_start:effective_dim_end]).view(bs, num_dim_x, num_dim_x)
+#     Wbot = model_Wbot(torch.ones(bs, 1).type(x.type())).view(bs, num_dim_x - num_dim_control,
+#                                                              num_dim_x - num_dim_control)
+#     W[:, 0:num_dim_x - num_dim_control, 0:num_dim_x - num_dim_control] = Wbot
+#     W[:, num_dim_x - num_dim_control::, 0:num_dim_x - num_dim_control] = 0
+#     W = W.transpose(1, 2).matmul(W)
+#     W = W + w_lb * torch.eye(num_dim_x).view(1, num_dim_x, num_dim_x).type(x.type())
+#
+#     return W
+
 def W_func(x,w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x, num_dim_control):
-
-    model_Wbot = torch.nn.Sequential(
-        torch.nn.Linear(1, 128, bias=True),
-        torch.nn.Tanh(),
-        torch.nn.Linear(128, (num_dim_x - num_dim_control) ** 2, bias=False))
-
-    dim = effective_dim_end - effective_dim_start
-    model_W = torch.nn.Sequential(
-        torch.nn.Linear(dim, 128, bias=True),
-        torch.nn.Tanh(),
-        torch.nn.Linear(128, num_dim_x * num_dim_x, bias=False))
-
-    CCM = torch.load('log_CAR/model_best.pth.tar', map_location=torch.device('cpu'))
-
+    model_W, model_Wbot, _, _, W_fun, _ = get_model(num_dim_x, num_dim_control, w_lb=w_lb, use_cuda=False)
+    CCM = torch.load('log_' + task + '/model_best.pth.tar', map_location=torch.device('cpu'))
     with torch.no_grad():
         model_W[0].weight.copy_(CCM['model_W']['0.weight'])
         model_W[0].bias.copy_(CCM['model_W']['0.bias'])
@@ -187,15 +221,7 @@ def W_func(x,w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x, num_di
         model_Wbot[0].weight.copy_(CCM['model_Wbot']['0.weight'])
         model_Wbot[0].bias.copy_(CCM['model_Wbot']['0.bias'])
         model_Wbot[2].weight.copy_(CCM['model_Wbot']['2.weight'])
-
-    W = model_W(x[:, effective_dim_start:effective_dim_end]).view(bs, num_dim_x, num_dim_x)
-    Wbot = model_Wbot(torch.ones(bs, 1).type(x.type())).view(bs, num_dim_x - num_dim_control,
-                                                             num_dim_x - num_dim_control)
-    W[:, 0:num_dim_x - num_dim_control, 0:num_dim_x - num_dim_control] = Wbot
-    W[:, num_dim_x - num_dim_control::, 0:num_dim_x - num_dim_control] = 0
-    W = W.transpose(1, 2).matmul(W)
-    W = W + w_lb * torch.eye(num_dim_x).view(1, num_dim_x, num_dim_x).type(x.type())
-
+    W = W_fun(x)
     return W
 
 def Jacobian_Matrix(M, x):
@@ -219,14 +245,34 @@ def W_JW(config, ps, X):
     return {"W": W, "DWdx": DWdx}
 
 
-def eval_metric_jacobian(config, ps, X):
+# def eval_metric_jacobian(config, ps, X):
+#     xp = []
+#     for i in range(ps["nodes"].shape[0]):
+#         xp.append(torch.from_numpy(X[:, i]).float())
+#     x = torch.stack(xp).reshape(config["N"] + 1, config["dim"], 1)
+#     x = x.requires_grad_()
+#     bs = x.shape[0]
+#     x = x.squeeze(-1)
+#
+#     w_lb = config["w_lb"]
+#     num_dim_x = config["dim"]
+#     num_dim_control = config["num_dim_control"]
+#     effective_dim_start = config["effective_dim_start"]
+#     effective_dim_end = config["effective_dim_end"]
+#
+#     W = W_func(x, w_lb, bs, effective_dim_start, effective_dim_end, num_dim_x,num_dim_control)
+#     DWDx = Jacobian_Matrix(W, x).detach().numpy().reshape(config["N"] + 1, num_dim_x, num_dim_x, num_dim_x)
+#     W = W.detach().numpy().reshape(config["N"] + 1, num_dim_x, num_dim_x)
+#     return W, DWDx
+
+def eval_metric_jacobian(config, ps, X):   #added new
     xp = []
     for i in range(ps["nodes"].shape[0]):
         xp.append(torch.from_numpy(X[:, i]).float())
     x = torch.stack(xp).reshape(config["N"] + 1, config["dim"], 1)
     x = x.requires_grad_()
     bs = x.shape[0]
-    x = x.squeeze(-1)
+    #x = x.squeeze(-1)
 
     w_lb = config["w_lb"]
     num_dim_x = config["dim"]
@@ -374,33 +420,38 @@ def pseudospectral_geodesic(xstar,xcurr): #had config before
     return {"E0" : E0,"ps" : ps, "comp_time" : comp_time, "C": C}
 
 
-#
+
 # #Run the following lines
-# num_train = 12 * 1000
+# num_train = 40000
 # num_test = 1
 # x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
 #
 # xstar = xref.numpy().reshape(num_train,config["dim"],1)
 # xcurr = x.numpy().reshape(num_train,config["dim"],1)
-#
+# #
 #
 # myList = []
 #
 # start_time = time.time()
 # for i in range(num_train):
-#     ps_result = pseudospectral_geodesic(config, xstar[i], xcurr[i])
+#     ps_result = pseudospectral_geodesic(xstar[i], xcurr[i])
 #     print(ps_result["E0"])
 #     myList.append({"xstar": xstar[i], "x": xcurr[i], "RE": ps_result["E0"]})
 # print("--- %s seconds ---" % (time.time() - start_time))
 # print("Done")
 #
+# import pickle
+# with open('40k_samples.pkl', 'wb') as f:
+#     pickle.dump(myList, f)
+
+
 #
 # #Loading data from saved file pickle.pkl
-import pickle
-with open('12k_closed.pkl', 'wb') as f:
-    pickle.dump(myList, f)
+# import pickle
+# with open('12k_closed.pkl', 'wb') as f:
+#     pickle.dump(myList, f)
 
-# with open('1k.pkl', 'rb') as f:
+# with open('data_CAR_closed_x0_from_X_40k_pts.pkl', 'rb') as f:
 #     data = pickle.load(f)
 
 
