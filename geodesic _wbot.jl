@@ -95,15 +95,22 @@ using Random
 import LineSearches: BackTracking
 
 np = pyimport("numpy")
-num_dim_x = 4
-vars = npzread("/home/vivek/PycharmProjects/CoRL2022/SEGWAY.npz")
-traj = npzread("/home/vivek/PycharmProjects/CoRL2022/SEGWAY_closed_pts.npz")
+vars = npzread("/home/vivek/PycharmProjects/CoRL2022/QUADROTOR_9D.npz")
+num_dim_x = vars["arr_6"]
+num_dim_control = vars["arr_7"]
+effective_dim_start = vars["arr_8"]
+effective_dim_end = vars["arr_9"]
+X_MIN = reshape(vars["arr_10"],(num_dim_x,))
+X_MAX = reshape(vars["arr_11"],(num_dim_x,)) 
 
 function Wf(x)
-        xf = reshape(x[2:4],(1,3))
+        xf=reshape(x[effective_dim_start+1:effective_dim_end],(1,effective_dim_end-effective_dim_start)) 
+        xbot = reshape(x[effective_dim_start+1:effective_dim_end-num_dim_control],(1,effective_dim_end-num_dim_control-effective_dim_start))
         W = reshape(tanh.(xf*(vars["arr_0"]') + vars["arr_1"]') * vars["arr_2"]',(num_dim_x,num_dim_x))'
-	#W = reshape((tanh.(xf*(vars["arr_0"]') + reshape(vars["arr_1"],(1,128))))* vars["arr_2"]',(4,4))
-	W = W'*W
+        Wbot = reshape(tanh.(xbot*(vars["arr_3"]') + vars["arr_4"]') * vars["arr_5"]',(num_dim_x-num_dim_control,num_dim_x-num_dim_control))'
+        W[1:num_dim_x - num_dim_control, 1:num_dim_x - num_dim_control] = Wbot
+        W[num_dim_x-num_dim_control+1:num_dim_x,1:num_dim_x - num_dim_control].= 0
+	W = W'*W + 0.1 * Matrix(I,num_dim_x,num_dim_x)
 end 
 
 
@@ -115,7 +122,7 @@ T = _chebpoly(nodes, D)
 Ts = _chebpolyder(T, nodes, D)
 Ti = T[:,2:N-1]; Te = T[:,[1,N]]
 A = inv([2*Ti*Ti' Te;Te' zeros(2,2)])
-num_points = size(traj["arr_0"],1)
+num_points = 10
 
 xd = np.zeros((num_dim_x,num_points))
 xc = np.zeros((num_dim_x,num_points))
@@ -123,10 +130,10 @@ RME= np.zeros((1,num_points))
 
 for i = 1:num_points
         if i == 1
-	   l = 0
+	    l = 0           
         end
-	xs =  traj["arr_0"][i,:]
-	x =   traj["arr_1"][i,:]
+	xs =  (X_MAX - X_MIN).* rand(Float64,(num_dim_x)) + X_MIN
+	x =  (X_MAX - X_MIN).* rand(Float64,(num_dim_x)) + X_MIN
         print("$(i):")
 	printstyled("xstar $(xs)\n";color=1)
 	printstyled("x $(x)\n";color=2)
@@ -151,7 +158,8 @@ for i = 1:num_points
 	   continue
         end
 end
-npzwrite("SEGWAY_closed.npz",Dict("xd" => xd, "x" => xc, "RE" => RME))
+
+npzwrite("QUADROTOR_9D_sampled.npz",Dict("xd" => xd, "x" => xc, "RE" => RME))
 print("DONE")
 
 
