@@ -334,7 +334,7 @@ def computeEnergy(config,ps,C, L, dL):
     C_shape = np.reshape(C, (config["dim"], config["deg"] + 1))
     X = np.matmul(C_shape, L)
     dX = np.matmul(C_shape, dL)
-    W_Jw = W_JW (config, ps, X)
+    W_Jw = W_JW(config, ps, X)
     E = 0.0
     for i in range(config["N"]+1):
         E = E + np.matmul(dX[:,i].reshape(1,dX.shape[0]),np.matmul(np.linalg.inv(W_Jw["W"][i]),dX[:,i].reshape(dX.shape[0],1)) * ps["weights"][i]) #INVERSE
@@ -422,12 +422,12 @@ def pseudospectral_geodesic(xstar,xcurr): #had config before
 
 
 # #Run the following lines
-# num_train = 40000
-# num_test = 1
-# x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
-#
-# xstar = xref.numpy().reshape(num_train,config["dim"],1)
-# xcurr = x.numpy().reshape(num_train,config["dim"],1)
+num_train = 1
+num_test = 1
+x,xref,uref = data_sets(num_train,num_test,config["dim"], config["num_dim_control"])
+
+xstar = xref.numpy().reshape(num_train,config["dim"],1)
+xcurr = x.numpy().reshape(num_train,config["dim"],1)
 # #
 #
 # myList = []

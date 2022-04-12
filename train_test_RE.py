@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, TensorDataset
+import random
 
 torch.manual_seed(0)  #for reproducibility
 
@@ -12,31 +13,43 @@ class Net(nn.Module):
        super(Net, self).__init__()
        self.hidden1 = torch.nn.Linear(input_dim, 128, bias=True)
        self.act1 = torch.nn.Tanh()
-       self.hidden2 = torch.nn.Linear(128, output_dim, bias=True)
-       self.act2 = torch.nn.Tanh()
+       # self.hidden2 = torch.nn.Linear(128, 128, bias=True)
+       # self.act2 = torch.nn.Tanh()
+       # self.hidden3 = torch.nn.Linear(128, 128, bias=True)
+       # self.act3 = torch.nn.Tanh()
+       # self.hidden4 = torch.nn.Linear(128, 128, bias=True)
+       # self.act4 = torch.nn.Tanh()
+       self.hidden5 = torch.nn.Linear(128, output_dim, bias=True)
+       self.act5 = torch.nn.Tanh()
 
 
    def forward(self, x):
        x = self.hidden1(x)
        x = self.act1(x)
-       x = self.hidden2(x)
-       x = self.act2(x)
+       # x = self.hidden2(x)
+       # x = self.act2(x)
+       # x = self.hidden3(x)
+       # x = self.act3(x)
+       # x = self.hidden4(x)
+       # x = self.act4(x)
+       x = self.hidden5(x)
+       x = self.act5(x)
        return x
 
 def Data(length,num_dim_x,datafile):
-    with open(datafile, 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
-        full_data = pickle.load(f)
 
+    data = np.load(datafile)
     Xstar = []
     Xcurr = []
     RE = []
 
-    data = full_data[0:length]
+    # data = datafile[:,0:length]
+    # random.shuffle(data)
 
-    for j in range(int(len(data))):
-        Xstar.append(data[j]["xstar"])
-        Xcurr.append(data[j]["x"])
-        RE.append(data[j]["RE"])
+    for j in range(length):
+        Xstar.append(data['xd'][:, j].reshape(num_dim_x, 1))#data[j]["xstar"])
+        Xcurr.append(data['x'][:, j].reshape(num_dim_x, 1)) #data[j]["x"])
+        RE.append(data['RE'][:, j]) #data[j]["RE"])
 
     Xstar = np.asarray(Xstar)
     Xcurr = np.asarray(Xcurr)

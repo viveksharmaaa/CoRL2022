@@ -3,10 +3,16 @@ import matplotlib.pyplot as plt
 import torch
 import pickle
 import numpy as np
+import sys
+import random
+sys.path.append('systems')
 
+task = 'CAR'
+
+sy = importlib.import_module('system_'+task)
 func = importlib.import_module('train_test_RE')
 
-ndx = 4
+ndx = sy.num_dim_x
 input_dim = 2 * ndx
 output_dim = 1
 
@@ -54,9 +60,9 @@ def test_loop(dataloader, model, loss_fn):
     return test_loss
 
 def _RE_negative_points(evalfile):
-    with open(evalfile,'rb') as f:  #'data_CAR_closed_x0_from_X'
-        full_data = pickle.load(f)
-
+     # with open(evalfile,'rb') as f:  #'data_CAR_closed_x0_from_X'
+     #     full_data = pickle.load(f)
+    full_data = evalfile
     Xstar = []
     Xcurr = []
     RE = []
@@ -83,8 +89,8 @@ def _RE_negative_points(evalfile):
 
     with torch.no_grad():
         pred = model(inp)
-    #     pred =  torch.sigmoid(torch.square(torch.norm(inp[:, 0:ndx] - inp[:, ndx:], dim=1)).reshape(X.shape[0], 1)) * (model(inp) * model(inp)) + \
-    # 0.1 * torch.square(torch.norm(inp[:, 0:ndx] - inp[:, ndx:], dim=1)).reshape(X.shape[0], 1)
+     #     pred =  torch.sigmoid(torch.square(torch.norm(inp[:, 0:ndx] - inp[:, ndx:], dim=1)).reshape(X.shape[0], 1)) * (model(inp) * model(inp)) + \
+     # 0.1 * torch.square(torch.norm(inp[:, 0:ndx] - inp[:, ndx:], dim=1)).reshape(X.shape[0], 1)
 
 
     X_Pts = inp[torch.where(pred < 0)[0], :]
@@ -94,15 +100,15 @@ def _RE_negative_points(evalfile):
     return neg_points_no, loss_fn(pred,re).item()
 
 
-iter = 100
+iter = 200
 epochs =[]
 tr_loss = [[],[],[],[]]
 val_loss = [[],[],[],[]]
 
 length = [2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000, 24000]
 
-file1 = "data_CAR_closed_x0_from_X_40k_pts.pkl"
-file2 = "40k_samples.pkl"
+file1 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_closed.npz' #"data_CAR_closed_x0_from_X_40k_pts.pkl"
+file2 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_sampled.npz' #"40k_samples.pkl"
 neg_pts = [[],[],[],[]]  # first two is evaluation at traj points for NN trained on traj points and samples respectively
 mse_neg_pts = [[],[],[],[]]  # first two is evaluation at traj points for NN trained on traj points and samples respectively
 
@@ -110,12 +116,26 @@ data_f = [file1, file2]
 train_l= [[],[],[],[]]
 test_l = [[],[],[],[]]
 
+my_List = [[], []]
+for o in range(2):
+    data = np.load(data_f[o])
+    for k in range(data["xd"].shape[1]):
+        my_List[o].append({"xstar": data['xd'][:, k].reshape(ndx, 1), "x": data['x'][:, k].reshape(ndx, 1), "RE": data['RE'][:, k]})
+
+
+        # data_shuff = [[],[]]
+#
+# for _k in range(2):
+#     with open(data_f[_k], 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
+#         data_shuff[_k] = pickle.load(f)
+#         random.shuffle(data_shuff[_k])
+
 
 # for l in range(10):
 #     for k in range(2):
 #         for j in range(2):
 #             for i in range(len(length)):
-#                 train_loader, test_loader = func.Data(length[i], ndx, data_f[j])
+#                 train_loader, test_loader = func.Data(length[i], ndx,data_shuff[j])
 #                 train_loss = train_l[j + 2 * k]
 #                 test_loss = test_l[j + 2 * k]
 #                 for t in range(iter):
@@ -124,14 +144,14 @@ test_l = [[],[],[],[]]
 #                     test_loss.append(test_loop(test_loader, model, loss_fn))
 #                 tr_loss[j + 2 * k].append(train_loss[-1])
 #                 val_loss[j + 2 * k].append(test_loss[-1])
-#                 npts, l_mse = _RE_negative_points(data_f[k])
+#                 npts, l_mse = _RE_negative_points(data_shuff[k])
 #                 neg_pts[j + 2 * k].append(npts)
 #                 mse_neg_pts[j + 2 * k].append(l_mse)
 # print("Done!")
 
 for j in range(2):
     for i in range(len(length)):
-        train_loader, test_loader = func.Data(length[i], ndx, data_f[j])
+        train_loader, test_loader = func.Data(length[i], ndx,data_f[j])  #data_shuff[j]
         train_loss = train_l[j]
         test_loss = test_l[j]
         for t in range(iter):
@@ -259,18 +279,21 @@ plt.savefig('Phis_samples_mse_Parametric.png')
 
 ##############
 
-with open('nonparam.pickle', 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
+with open('SEGWAY_NN_param.pkl', 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
+    param = pickle.load(f)
+
+with open('SEGWAY_NN_nonparam.pkl', 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
     non_param = pickle.load(f)
 
-with open('NN_nonparam.pkl', 'wb') as f:
-    pickle.dump([tr_loss, val_loss], f)
+# with open('SEGWAY_NN_nonparam.pkl', 'wb') as f:
+#     pickle.dump([tr_loss, val_loss], f)
 
 #[tr_loss, val_loss, mse_neg_pts, neg_pts]
 
 phi1_traj_mse_param=[]
 phi1_traj_mse_nonparam=[]
 
-traj1 = np.asarray(mse_neg_pts[3])
+traj1 = np.asarray(param[2][3])
 traj2 = np.asarray(non_param[2][3])
 
 for i in range(12):
@@ -286,20 +309,41 @@ plt.xlabel("# of data points")
 plt.ylabel("Mean Square Error")
 plt.title("MSE for testing with uniformly sampled data-points")
 plt.legend()
-plt.savefig('Phi2s_samples_mse.png')
+plt.savefig('SEGWAY_Phi2s_samples_mse.png')
 
 # Train and test loss
 
-with open('NN_nonparam.pkl', 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
-    param = pickle.load(f)
+# with open('NN_nonparam.pkl', 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
+#     param = pickle.load(f)
 
-plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],tr_loss[0])
-plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],val_loss[0])
-plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],param[0][0],'--')
-plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],param[1][0],'--')
+phi_param_train=[]
+phi_param_test=[]
+phi_non_param_train=[]
+phi_non_param_test=[]
+
+traj1 = np.asarray(param[0][1])
+traj2 = np.asarray(param[1][1])
+traj3 = np.asarray(non_param[0][1])
+traj4 = np.asarray(non_param[1][1])
+
+for i in range(12):
+    phi_param_train.append(np.sum(traj1[10*i:(i+1)*10])/10)
+    phi_param_test.append(np.sum(traj2[10*i:(i+1)*10])/10)
+    phi_non_param_train.append(np.sum(traj3[10 * i:(i + 1) * 10]) / 10)
+    phi_non_param_test.append(np.sum(traj4[10 * i:(i + 1) * 10]) / 10)
+
+
+plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],phi_non_param_train)
+plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],phi_non_param_test)
+plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],phi_param_train,'--')
+plt.plot(['2k', '4k', '6k', '8k', '10k', '12k','14k', '16k', '18k', '20k', '22k', '24k'],phi_param_test,'--')
 plt.xlabel("# of data points")
 plt.ylabel("MSE Loss")
 plt.title("Loss variation with # of data points")
-plt.legend(["$\Phi_1$ Train Loss", "$\Phi_1$ Test Loss","$\Phi_1^{*}$ Train Loss","$\Phi_1^{*}$ Test Loss"])
-plt.savefig('Phi1s_comparative_mse.png')
+plt.legend(["$\Phi_2$ Train Loss", "$\Phi_2$ Test Loss","$\Phi_2^{*}$ Train Loss","$\Phi_2^{*}$ Test Loss"])
+plt.savefig('SEGWAY_Phi2s_samples_comparative_mse.png')
+
+
+# with open('SEGWAY_NN_nonparam.pkl', 'wb') as f:
+#     pickle.dump([tr_loss, val_loss,mse_neg_pts], f)
 
