@@ -20,7 +20,7 @@ class Net(nn.Module):
        # self.hidden4 = torch.nn.Linear(128, 128, bias=True)
        # self.act4 = torch.nn.Tanh()
        self.hidden5 = torch.nn.Linear(128, output_dim, bias=True)
-       self.act5 = torch.nn.Tanh()
+       #self.act5 = torch.nn.Tanh()
 
 
    def forward(self, x):
@@ -33,23 +33,21 @@ class Net(nn.Module):
        # x = self.hidden4(x)
        # x = self.act4(x)
        x = self.hidden5(x)
-       x = self.act5(x)
+       #x = self.act5(x)
        return x
 
 def Data(length,num_dim_x,datafile):
 
-    data = np.load(datafile)
     Xstar = []
     Xcurr = []
     RE = []
 
-    # data = datafile[:,0:length]
-    # random.shuffle(data)
+    data = datafile[:,0:length]
 
     for j in range(length):
-        Xstar.append(data['xd'][:, j].reshape(num_dim_x, 1))#data[j]["xstar"])
-        Xcurr.append(data['x'][:, j].reshape(num_dim_x, 1)) #data[j]["x"])
-        RE.append(data['RE'][:, j]) #data[j]["RE"])
+        Xstar.data[j]["xstar"]
+        Xcurr.data[j]["x"]
+        RE.data[j]["RE"]
 
     Xstar = np.asarray(Xstar)
     Xcurr = np.asarray(Xcurr)

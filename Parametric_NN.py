@@ -107,8 +107,8 @@ val_loss = [[],[],[],[]]
 
 length = [2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000, 24000]
 
-file1 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_closed.npz' #"data_CAR_closed_x0_from_X_40k_pts.pkl"
-file2 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_sampled.npz' #"40k_samples.pkl"
+file1 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_closed_100k.pkl' #"data_CAR_closed_x0_from_X_40k_pts.pkl"
+file2 = '/home/vivek/PycharmProjects/CoRL2022/Npz_files/' + task + '/' + task + '_sampled_100k.pkl' #"40k_samples.pkl"
 neg_pts = [[],[],[],[]]  # first two is evaluation at traj points for NN trained on traj points and samples respectively
 mse_neg_pts = [[],[],[],[]]  # first two is evaluation at traj points for NN trained on traj points and samples respectively
 
@@ -116,19 +116,18 @@ data_f = [file1, file2]
 train_l= [[],[],[],[]]
 test_l = [[],[],[],[]]
 
-my_List = [[], []]
-for o in range(2):
-    data = np.load(data_f[o])
-    for k in range(data["xd"].shape[1]):
-        my_List[o].append({"xstar": data['xd'][:, k].reshape(ndx, 1), "x": data['x'][:, k].reshape(ndx, 1), "RE": data['RE'][:, k]})
+# my_List = [[], []]
+# for o in range(2):
+#     data = np.load(data_f[o])
+#     for k in range(data["xd"].shape[1]):
+#         my_List[o].append({"xstar": data['xd'][:, k].reshape(ndx, 1), "x": data['x'][:, k].reshape(ndx, 1), "RE": data['RE'][:, k]})
 
+data_shuff = [[],[]]
 
-        # data_shuff = [[],[]]
-#
-# for _k in range(2):
-#     with open(data_f[_k], 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
-#         data_shuff[_k] = pickle.load(f)
-#         random.shuffle(data_shuff[_k])
+for _k in range(2):
+    with open(data_f[_k], 'rb') as f:  # data_closed_x0_X 25k_samples '25k_samples.pkl'
+        data_shuff[_k] = pickle.load(f)
+        random.shuffle(data_shuff[_k])
 
 
 # for l in range(10):
@@ -151,7 +150,7 @@ for o in range(2):
 
 for j in range(2):
     for i in range(len(length)):
-        train_loader, test_loader = func.Data(length[i], ndx,data_f[j])  #data_shuff[j]
+        train_loader, test_loader = func.Data(length[i],ndx,data_shuff[j])
         train_loss = train_l[j]
         test_loss = test_l[j]
         for t in range(iter):
